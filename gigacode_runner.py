@@ -18,7 +18,7 @@ import subprocess
 import sys
 import threading
 from dataclasses import dataclass, field
-from typing import Iterator, List, Optional
+from typing import Callable, Iterator, List, Optional
 
 IS_WINDOWS = os.name == "nt"
 # Windows ограничивает командную строку ~32k символов, unix — сотнями КБ.
@@ -159,10 +159,14 @@ class GigaCode:
 
     # --- потоковый вызов ------------------------------------------------
     def stream(self, prompt: str, cwd: Optional[str] = None,
-               cancel: Optional[threading.Event] = None) -> Iterator[str]:
+               cancel: Optional[threading.Event] = None,
+               on_stderr: Optional[Callable[[str], None]] = None,
+               info: Optional[dict] = None) -> Iterator[str]:
         """Запускает CLI и отдаёт stdout кусками по мере появления.
 
         Если генератор закрыть (или выставить cancel), процесс будет убит вместе с дочерними.
+        on_stderr(text) получает stderr по мере появления; в info (если передан) пишутся
+        pid, cwd и returncode — для журнала запросов.
         """
         if not prompt.strip():
             raise GigaCodeError("Пустой запрос")
@@ -187,8 +191,24 @@ class GigaCode:
         except OSError as e:
             raise GigaCodeError("Не удалось запустить gigacode: {}".format(e))
 
-        stderr_chunks: List[bytes] = []
-        t_err = threading.Thread(target=lambda: stderr_chunks.append(proc.stderr.read()), daemon=True)
+        if info is not None:
+            info.update(pid=proc.pid, cwd=workdir)
+
+        stderr_chunks: List[str] = []
+
+        def read_stderr():
+            dec = codecs.getincrementaldecoder("utf-8")(errors="replace")
+            while True:
+                raw = proc.stderr.read1(4096)
+                text = ANSI_RE.sub("", dec.decode(raw, final=not raw))
+                if text:
+                    stderr_chunks.append(text)
+                    if on_stderr:
+                        on_stderr(text)
+                if not raw:
+                    return
+
+        t_err = threading.Thread(target=read_stderr, daemon=True)
         t_err.start()
 
         timed_out = threading.Event()
@@ -227,15 +247,17 @@ class GigaCode:
                 yield tail
             code = proc.wait()
             t_err.join(timeout=5)
+            if info is not None:
+                info["returncode"] = code
             if timed_out.is_set():
                 raise GigaCodeError("Превышен таймаут {} с".format(int(self.timeout)))
             if cancel is not None and cancel.is_set():
                 return
             if code != 0:
-                err = ANSI_RE.sub("", b"".join(stderr_chunks).decode("utf-8", "replace")).strip()
+                err = "".join(stderr_chunks).strip()
                 raise GigaCodeError("gigacode завершился с кодом {}: {}".format(code, err[-2000:] or "(stderr пуст)"))
             if not produced:
-                err = b"".join(stderr_chunks).decode("utf-8", "replace").strip()
+                err = "".join(stderr_chunks).strip()
                 if err:
                     raise GigaCodeError("gigacode ничего не вернул. stderr: {}".format(err[-2000:]))
         finally:
