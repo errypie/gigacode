@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GigaCode Chat</title>
+<style>
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --side: #eef0f3; --text: #1d2129; --muted: #6b7280;
+  --border: #dde1e6; --accent: #1f9d55; --accent-text: #fff; --user: #e7f5ec; --code: #f2f4f7;
+  --danger: #c0392b;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #15171b; --panel: #1c1f24; --side: #111316; --text: #e6e8eb; --muted: #9aa1ab;
+    --border: #2c3036; --accent: #2fb36b; --accent-text: #0b1a12; --user: #1d3326; --code: #23272e;
+    --danger: #e5675a;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--text); font: 15px/1.55 -apple-system, "Segoe UI", Roboto, Arial, sans-serif; display: flex; }
+button { font: inherit; cursor: pointer; }
+aside { width: 260px; background: var(--side); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; }
+aside .top { padding: 12px; display: flex; gap: 8px; }
+.btn { border: 1px solid var(--border); background: var(--panel); color: var(--text); border-radius: 8px; padding: 8px 12px; }
+.btn.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
+.btn:disabled { opacity: .5; cursor: default; }
+#chats { flex: 1; overflow-y: auto; padding: 0 8px 8px; }
+.chat-item { display: flex; align-items: center; gap: 4px; padding: 8px 10px; border-radius: 8px; cursor: pointer; color: var(--text); }
+.chat-item:hover { background: var(--panel); }
+.chat-item.active { background: var(--panel); box-shadow: inset 3px 0 0 var(--accent); }
+.chat-item span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-item button { border: 0; background: none; color: var(--muted); padding: 0 4px; visibility: hidden; }
+.chat-item:hover button { visibility: visible; }
+aside .bottom { border-top: 1px solid var(--border); padding: 12px; font-size: 13px; color: var(--muted); }
+aside .bottom label { display: block; margin: 8px 0 4px; }
+aside .bottom input { width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--text); font: 13px monospace; }
+main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+header { padding: 10px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; background: var(--panel); }
+header h1 { font-size: 16px; margin: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#status { font-size: 13px; color: var(--muted); }
+#status.ok::before, #status.bad::before { content: "●"; margin-right: 6px; }
+#status.ok::before { color: var(--accent); } #status.bad::before { color: var(--danger); }
+#menu { display: none; }
+#log { flex: 1; overflow-y: auto; padding: 24px 16px; }
+.wrap { max-width: 860px; margin: 0 auto; }
+.msg { margin: 0 0 18px; display: flex; flex-direction: column; }
+.msg .who { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.msg.user { align-items: flex-end; }
+.msg.user .body { background: var(--user); border-radius: 14px; padding: 10px 14px; max-width: 85%; white-space: pre-wrap; word-wrap: break-word; }
+.msg.assistant .body { width: 100%; overflow-wrap: anywhere; }
+.msg.error .body { color: var(--danger); white-space: pre-wrap; }
+.body p { margin: 0 0 10px; } .body p:last-child { margin-bottom: 0; }
+.body h1, .body h2, .body h3, .body h4 { margin: 16px 0 8px; line-height: 1.3; }
+.body h1 { font-size: 1.35em; } .body h2 { font-size: 1.2em; } .body h3, .body h4 { font-size: 1.05em; }
+.body ul, .body ol { margin: 0 0 10px; padding-left: 24px; }
+.body code { background: var(--code); border-radius: 4px; padding: 1px 5px; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; }
+.body pre { position: relative; background: var(--code); border: 1px solid var(--border); border-radius: 8px; padding: 12px; overflow-x: auto; margin: 0 0 12px; }
+.body pre code { background: none; padding: 0; display: block; white-space: pre; }
+.body pre .lang { position: absolute; top: 4px; left: 10px; font-size: 11px; color: var(--muted); }
+.body pre .copy { position: absolute; top: 6px; right: 6px; font-size: 12px; padding: 2px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--muted); }
+.body pre:has(.lang) { padding-top: 24px; }
+.body blockquote { margin: 0 0 10px; padding-left: 12px; border-left: 3px solid var(--border); color: var(--muted); }
+.body table { border-collapse: collapse; margin: 0 0 12px; display: block; overflow-x: auto; }
+.body th, .body td { border: 1px solid var(--border); padding: 4px 10px; }
+.body a { color: var(--accent); }
+.meta { font-size: 12px; color: var(--muted); margin-top: 6px; display: flex; gap: 12px; }
+.meta button { border: 0; background: none; color: var(--muted); padding: 0; font-size: 12px; }
+.meta button:hover { color: var(--text); }
+.thinking { color: var(--muted); font-style: italic; }
+.thinking::after { content: ""; animation: dots 1.2s steps(4) infinite; }
+@keyframes dots { 0% { content: ""; } 25% { content: "."; } 50% { content: ".."; } 75% { content: "..."; } }
+.empty { text-align: center; color: var(--muted); margin-top: 18vh; }
+.empty h2 { color: var(--text); font-weight: 600; }
+footer { padding: 12px 16px 16px; }
+.composer { max-width: 860px; margin: 0 auto; display: flex; gap: 8px; align-items: flex-end; background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 8px; }
+textarea { flex: 1; border: 0; outline: 0; resize: none; background: transparent; color: var(--text); font: inherit; max-height: 240px; padding: 6px 8px; }
+.hint { max-width: 860px; margin: 6px auto 0; font-size: 12px; color: var(--muted); text-align: center; }
+@media (max-width: 760px) {
+  aside { position: fixed; inset: 0 auto 0 0; z-index: 10; transform: translateX(-100%); transition: transform .2s; }
+  aside.open { transform: none; }
+  #menu { display: inline-block; }
+}
+</style>
+</head>
+<body>
+<aside id="side">
+  <div class="top">
+    <button class="btn primary" id="newChat" style="flex:1">+ Новый чат</button>
+  </div>
+  <div id="chats"></div>
+  <div class="bottom">
+    <label for="cwd">Рабочий каталог (пусто — по умолчанию сервера)</label>
+    <input id="cwd" placeholder="/path/to/project">
+    <label for="token">Токен API (если сервер запущен с --token)</label>
+    <input id="token" type="password">
+  </div>
+</aside>
+<main>
+  <header>
+    <button class="btn" id="menu">☰</button>
+    <h1 id="title">GigaCode</h1>
+    <span id="status">проверка…</span>
+  </header>
+  <div id="log"><div class="wrap" id="msgs"></div></div>
+  <footer>
+    <div class="composer">
+      <textarea id="input" rows="1" placeholder="Сообщение для GigaCode…"></textarea>
+      <button class="btn primary" id="send">Отправить</button>
+    </div>
+    <div class="hint">Enter — отправить, Shift+Enter — новая строка. Каждый запрос — отдельный вызов CLI, история передаётся в промпте.</div>
+  </footer>
+</main>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
+};
+
+let chats = store.get("gc.chats", []);
+let currentId = store.get("gc.current", null);
+let busy = null; // {controller, chatId}
+
+$("cwd").value = store.get("gc.cwd", "");
+$("token").value = store.get("gc.token", "");
+$("cwd").oninput = () => store.set("gc.cwd", $("cwd").value.trim());
+$("token").oninput = () => store.set("gc.token", $("token").value.trim());
+
+function save() { store.set("gc.chats", chats); store.set("gc.current", currentId); }
+function current() { return chats.find((c) => c.id === currentId); }
+function newChat() {
+  const c = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), title: "Новый чат", messages: [] };
+  chats.unshift(c); currentId = c.id; save(); render();
+  $("input").focus();
+}
+
+// ---------- мини-markdown (без внешних библиотек) ----------
+function esc(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+function inline(s) {
+  const codes = [];
+  s = s.replace(/`([^`\n]+)`/g, (_, c) => { codes.push(c); return "\u0000" + (codes.length - 1) + "\u0000"; });
+  s = esc(s)
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|[^*\w])\*([^*\n]+)\*(?!\w)/g, "$1<em>$2</em>")
+    .replace(/~~([^~]+)~~/g, "<del>$1</del>")
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  return s.replace(/\u0000(\d+)\u0000/g, (_, i) => "<code>" + esc(codes[+i]) + "</code>");
+}
+function markdown(src) {
+  const lines = src.replace(/\r\n/g, "\n").split("\n");
+  let out = [], i = 0;
+  while (i < lines.length) {
+    let line = lines[i];
+    const fence = line.match(/^\s*(```|~~~)\s*([\w+#.-]*)/);
+    if (fence) {
+      const buf = []; i++;
+      while (i < lines.length && !lines[i].trim().startsWith(fence[1])) buf.push(lines[i++]);
+      i++;
+      out.push('<pre>' + (fence[2] ? '<span class="lang">' + esc(fence[2]) + '</span>' : '') +
+        '<button class="copy">копировать</button><code>' + esc(buf.join("\n")) + '</code></pre>');
+      continue;
+    }
+    const h = line.match(/^(#{1,6})\s+(.*)/);
+    if (h) { const n = Math.min(h[1].length, 4); out.push(`<h${n}>${inline(h[2])}</h${n}>`); i++; continue; }
+    if (/^\s*([-*_])\s*\1\s*\1[\s\-*_]*$/.test(line)) { out.push("<hr>"); i++; continue; }
+    if (/^\s*\|.*\|\s*$/.test(line) && i + 1 < lines.length && /^\s*\|?[\s:|-]+\|?\s*$/.test(lines[i + 1]) && lines[i + 1].includes("-")) {
+      const cells = (l) => l.trim().replace(/^\||\|$/g, "").split("|").map((c) => inline(c.trim()));
+      let t = "<table><tr>" + cells(line).map((c) => "<th>" + c + "</th>").join("") + "</tr>";
+      i += 2;
+      while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) t += "<tr>" + cells(lines[i++]).map((c) => "<td>" + c + "</td>").join("") + "</tr>";
+      out.push(t + "</table>"); continue;
+    }
+    if (/^\s*>/.test(line)) {
+      const buf = [];
+      while (i < lines.length && /^\s*>/.test(lines[i])) buf.push(lines[i++].replace(/^\s*>\s?/, ""));
+      out.push("<blockquote>" + markdown(buf.join("\n")) + "</blockquote>"); continue;
+    }
+    const li = line.match(/^\s*([-*+]|\d+[.)])\s+/);
+    if (li) {
+      const ordered = /\d/.test(li[1]), tag = ordered ? "ol" : "ul", items = [];
+      while (i < lines.length) {
+        const m = lines[i].match(/^\s*([-*+]|\d+[.)])\s+(.*)/);
+        if (m) { items.push(m[2]); i++; }
+        else if (lines[i].trim() && /^\s{2,}/.test(lines[i]) && items.length) { items[items.length - 1] += " " + lines[i].trim(); i++; }
+        else break;
+      }
+      out.push(`<${tag}>` + items.map((t) => "<li>" + inline(t) + "</li>").join("") + `</${tag}>`); continue;
+    }
+    if (!line.trim()) { i++; continue; }
+    const buf = [];
+    while (i < lines.length && lines[i].trim() && !/^\s*(```|~~~|#{1,6}\s|>|([-*+]|\d+[.)])\s)/.test(lines[i])) buf.push(lines[i++]);
+    if (!buf.length) buf.push(lines[i++]);
+    out.push("<p>" + buf.map(inline).join("<br>") + "</p>");
+  }
+  return out.join("");
+}
+
+// ---------- отрисовка ----------
+function renderChats() {
+  const box = $("chats"); box.innerHTML = "";
+  chats.forEach((c) => {
+    const el = document.createElement("div");
+    el.className = "chat-item" + (c.id === currentId ? " active" : "");
+    el.innerHTML = "<span></span><button title='Удалить'>✕</button>";
+    el.querySelector("span").textContent = c.title;
+    el.onclick = () => { currentId = c.id; save(); render(); $("side").classList.remove("open"); };
+    el.querySelector("button").onclick = (e) => {
+      e.stopPropagation();
+      if (!confirm("Удалить чат «" + c.title + "»?")) return;
+      chats = chats.filter((x) => x.id !== c.id);
+      if (currentId === c.id) currentId = chats[0] ? chats[0].id : null;
+      save(); render();
+    };
+    box.appendChild(el);
+  });
+}
+function msgEl(m) {
+  const el = document.createElement("div");
+  el.className = "msg " + m.role;
+  const who = { user: "Вы", assistant: "GigaCode", error: "Ошибка" }[m.role] || m.role;
+  el.innerHTML = `<div class="who">${who}</div><div class="body"></div>`;
+  const body = el.querySelector(".body");
+  if (m.role === "assistant") body.innerHTML = markdown(m.content); else body.textContent = m.content;
+  if (m.role === "assistant" && m.elapsed != null) {
+    const meta = document.createElement("div"); meta.className = "meta";
+    meta.innerHTML = `<span>${m.elapsed.toFixed(1)} с</span><button>копировать ответ</button>`;
+    meta.querySelector("button").onclick = (e) => copy(m.content, e.target);
+    el.appendChild(meta);
+  }
+  return el;
+}
+function render() {
+  renderChats();
+  const c = current(), box = $("msgs");
+  box.innerHTML = "";
+  $("title").textContent = c ? c.title : "GigaCode";
+  if (!c || !c.messages.length) {
+    box.innerHTML = '<div class="empty"><h2>Чем помочь?</h2><p>Запросы уходят в <code>gigacode --approval-mode auto-edit -p</code></p></div>';
+  } else c.messages.forEach((m) => box.appendChild(msgEl(m)));
+  if (busy && c && busy.chatId === c.id) box.appendChild(busy.el);
+  updateSend(); scrollDown();
+}
+function scrollDown() { const l = $("log"); l.scrollTop = l.scrollHeight; }
+function updateSend() {
+  const b = $("send");
+  if (busy) { b.textContent = "Стоп"; b.classList.remove("primary"); }
+  else { b.textContent = "Отправить"; b.classList.add("primary"); }
+}
+function copy(text, btn) {
+  const done = () => { const t = btn.textContent; btn.textContent = "скопировано"; setTimeout(() => (btn.textContent = t), 1200); };
+  if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(done);
+  else { const ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove(); done(); }
+}
+$("msgs").addEventListener("click", (e) => {
+  if (e.target.classList.contains("copy")) copy(e.target.parentElement.querySelector("code").textContent, e.target);
+});
+
+// ---------- отправка ----------
+async function send() {
+  if (busy) { busy.controller.abort(); return; }
+  const text = $("input").value.trim();
+  if (!text) return;
+  if (!current()) newChat();
+  const chat = current();
+  chat.messages.push({ role: "user", content: text });
+  if (chat.title === "Новый чат") chat.title = text.slice(0, 48);
+  $("input").value = ""; autosize(); save();
+
+  const el = msgEl({ role: "assistant", content: "" });
+  const body = el.querySelector(".body");
+  const started = Date.now();
+  body.innerHTML = '<span class="thinking">GigaCode думает</span>';
+  const tick = setInterval(() => {
+    const t = body.querySelector(".thinking");
+    if (t) t.firstChild.textContent = "GigaCode думает " + Math.round((Date.now() - started) / 1000) + " с";
+  }, 1000);
+  busy = { controller: new AbortController(), chatId: chat.id, el };
+  render();
+
+  const history = chat.messages.filter((m) => m.role === "user" || m.role === "assistant")
+    .map((m) => ({ role: m.role, content: m.content }));
+  const headers = { "Content-Type": "application/json" };
+  const token = $("token").value.trim();
+  if (token) headers.Authorization = "Bearer " + token;
+
+  let answer = "", error = null, elapsed = null;
+  try {
+    const res = await fetch("/api/chat", {
+      method: "POST", headers, signal: busy.controller.signal,
+      body: JSON.stringify({ messages: history, stream: true, cwd: $("cwd").value.trim() || undefined }),
+    });
+    if (!res.ok) {
+      let msg = res.status + " " + res.statusText;
+      try { msg = (await res.json()).error || msg; } catch (e) {}
+      throw new Error(msg);
+    }
+    const reader = res.body.getReader(), dec = new TextDecoder();
+    let buf = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let idx;
+      while ((idx = buf.indexOf("\n\n")) >= 0) {
+        const line = buf.slice(0, idx).trim(); buf = buf.slice(idx + 2);
+        if (!line.startsWith("data:")) continue;
+        const ev = JSON.parse(line.slice(5));
+        if (ev.type === "delta") {
+          answer += ev.text;
+          const nearBottom = $("log").scrollHeight - $("log").scrollTop - $("log").clientHeight < 80;
+          body.innerHTML = markdown(answer);
+          if (nearBottom) scrollDown();
+        } else if (ev.type === "done") elapsed = ev.elapsed;
+        else if (ev.type === "error") error = ev.error;
+      }
+    }
+  } catch (e) {
+    error = e.name === "AbortError" ? "Остановлено пользователем" : (e.message || String(e));
+  }
+  clearInterval(tick);
+  if (answer.trim()) chat.messages.push({ role: "assistant", content: answer.trim(), elapsed: elapsed != null ? elapsed : (Date.now() - started) / 1000 });
+  if (error) chat.messages.push({ role: "error", content: error });
+  busy = null; save(); render();
+  checkHealth();
+}
+
+function autosize() { const t = $("input"); t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 240) + "px"; }
+$("input").addEventListener("input", autosize);
+$("input").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); if (!busy) send(); }
+});
+$("send").onclick = send;
+$("newChat").onclick = newChat;
+$("menu").onclick = () => $("side").classList.toggle("open");
+
+async function checkHealth() {
+  const s = $("status");
+  try {
+    const h = await (await fetch("/health")).json();
+    s.className = "ok";
+    s.textContent = "онлайн · " + h.active + "/" + h.max_parallel + " занято";
+    s.title = "workdir: " + h.workdir + "\ncmd: " + h.command.join(" ");
+    if (!$("cwd").value) $("cwd").placeholder = h.workdir;
+  } catch (e) { s.className = "bad"; s.textContent = "сервер недоступен"; }
+}
+checkHealth(); setInterval(checkHealth, 15000);
+render();
+$("input").focus();
+</script>
+</body>
+</html>
