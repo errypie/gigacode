@@ -127,6 +127,8 @@ def main():
             MODES["currentModeId"] = p.get("modeId")
             send({"jsonrpc": "2.0", "id": rid, "result": {}})
             update(p["sessionId"], {"sessionUpdate": "current_mode_update", "currentModeId": p.get("modeId")})
+        elif m == "session/set_model":
+            send({"jsonrpc": "2.0", "id": rid, "result": {}})
         elif rid is not None:
             send({"jsonrpc": "2.0", "id": rid, "error": {"code": -32601, "message": "Method not found: " + m}})
 

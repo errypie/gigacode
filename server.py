@@ -3,7 +3,8 @@
 Запуск:  python server.py --port 8765 --workdir ./workspace
 
 Живые сессии (`gigacode --acp`, маршруты как у qwen serve):
-  POST   /session                              создать / подключиться   {cwd?, sessionScope?, permissionPolicy?}
+  POST   /session                              создать / подключиться   {cwd?, sessionScope?, permissionPolicy?,
+                                               includeDirectories?}
   GET    /session                              список сессий (расширение)
   GET    /session/{id}/status                  состояние
   GET    /session/{id}/events                  SSE-поток событий (Last-Event-ID для дочитки)
@@ -272,9 +273,12 @@ class Handler(BaseHTTPRequestHandler):
     @route("POST", "/session")
     def create_session(self):
         body = self._read_json()
+        include_dirs = body.get("includeDirectories") or []
+        if not isinstance(include_dirs, list) or not all(isinstance(d, str) for d in include_dirs):
+            raise ApiError(400, "includeDirectories: список путей", "invalid_include_directory")
         s, attached = self.app.manager.create(
             body.get("cwd"), scope=body.get("sessionScope", "single"), title=body.get("displayName", ""),
-            permission_policy=body.get("permissionPolicy", "ask"))
+            permission_policy=body.get("permissionPolicy", "ask"), include_dirs=include_dirs)
         if self._client_id():
             s.client_seen[self._client_id()] = int(time.time() * 1000)
         self._json(200, {"sessionId": s.id, "workspaceCwd": s.cwd, "attached": attached,

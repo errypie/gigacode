@@ -39,7 +39,10 @@ class GigaCodeClient:
             return urllib.request.urlopen(req, timeout=self.timeout)
         except urllib.error.HTTPError as e:
             try:
-                msg = json.loads(e.read().decode("utf-8")).get("error", str(e))
+                data = json.loads(e.read().decode("utf-8"))
+                msg = data.get("error", str(e))
+                if data.get("stderrTail"):
+                    msg = "{}\n{}".format(msg, data["stderrTail"].strip())
             except ValueError:
                 msg = str(e)
             raise RuntimeError(msg) from None
@@ -73,15 +76,23 @@ class GigaCodeClient:
 
     # --- живые сессии -----------------------------------------------------
     def create_session(self, cwd: Optional[str] = None, permission_policy: str = "ask",
-                       scope: str = "thread") -> str:
+                       scope: str = "thread", include_directories: Optional[List[str]] = None) -> str:
         body = {"sessionScope": scope, "permissionPolicy": permission_policy}
         if cwd:
             body["cwd"] = cwd
+        if include_directories:
+            body["includeDirectories"] = include_directories
         return self._json("POST", "/session", body)["sessionId"]
 
     def prompt(self, session_id: str, text: str) -> str:
         return self._json("POST", "/session/{}/prompt".format(session_id),
                           {"prompt": [{"type": "text", "text": text}]})["promptId"]
+
+    def set_approval_mode(self, session_id: str, mode: str) -> None:
+        self._json("POST", "/session/{}/approval-mode".format(session_id), {"mode": mode})
+
+    def set_model(self, session_id: str, model_id: str) -> None:
+        self._json("POST", "/session/{}/model".format(session_id), {"modelId": model_id})
 
     def status(self, session_id: str) -> dict:
         return self._json("GET", "/session/{}/status".format(session_id))

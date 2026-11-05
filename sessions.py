@@ -45,11 +45,12 @@ class ApiError(Exception):
 
 class Session:
     def __init__(self, manager: "SessionManager", cwd: str, *, title: str = "", kind: str = "interactive",
-                 permission_policy: str = "ask"):
+                 permission_policy: str = "ask", include_dirs: Optional[List[str]] = None):
         self.manager = manager
         self.id = str(uuid.uuid4())
         self.acp_session_id: Optional[str] = None
         self.cwd = cwd
+        self.include_dirs = include_dirs or []
         self.kind = kind  # interactive — живая сессия; api — разовый вызов из /api/chat или /v1
         self.display_name = title
         self.created = _ms()
@@ -129,6 +130,8 @@ class Session:
     def start(self):
         m = self.manager
         cmd = m.base_command + ["--acp", "--approval-mode", m.approval_mode]
+        for path in self.include_dirs:
+            cmd += ["--include-directories", path]
         self.emit("agent_process", command=cmd, cwd=self.cwd)
         try:
             self.conn = AcpConnection(cmd, self.cwd, on_notification=self._on_notification,
@@ -504,9 +507,10 @@ class SessionManager:
         threading.Thread(target=self._reaper, daemon=True).start()
 
     def create(self, cwd: Optional[str] = None, *, scope: str = "single", title: str = "",
-               kind: str = "interactive", permission_policy: str = "ask") -> Tuple[Session, bool]:
+               kind: str = "interactive", permission_policy: str = "ask",
+               include_dirs: Optional[List[str]] = None) -> Tuple[Session, bool]:
         """Возвращает (сессия, attached). scope=single — подключиться к живой сессии в том же каталоге."""
-        cwd = os.path.abspath(cwd or self.default_cwd)
+        cwd = os.path.abspath(os.path.expanduser(cwd or self.default_cwd))
         if not os.path.isdir(cwd):
             raise ApiError(400, "Каталог не существует: {}".format(cwd), "invalid_cwd")
         if scope not in ("single", "thread"):
@@ -514,6 +518,11 @@ class SessionManager:
         if permission_policy not in PERMISSION_POLICIES:
             raise ApiError(400, "permissionPolicy: одно из {}".format(", ".join(PERMISSION_POLICIES)),
                            "invalid_permission_policy")
+        include_dirs = list(dict.fromkeys(os.path.normpath(os.path.join(cwd, os.path.expanduser(p)))
+                                          for p in include_dirs or []))
+        for path in include_dirs:
+            if not os.path.isdir(path):
+                raise ApiError(400, "Каталог не существует: {}".format(path), "invalid_include_directory")
         with self._lock:
             if scope == "single":
                 for s in self.sessions.values():
@@ -523,7 +532,8 @@ class SessionManager:
             if live >= self.max_sessions:
                 raise ApiError(503, "Достигнут лимит живых сессий ({})".format(self.max_sessions),
                                "session_limit_exceeded")
-            s = Session(self, cwd, title=title, kind=kind, permission_policy=permission_policy)
+            s = Session(self, cwd, title=title, kind=kind, permission_policy=permission_policy,
+                        include_dirs=include_dirs)
             self.sessions[s.id] = s
             self._prune()
         s.start()
